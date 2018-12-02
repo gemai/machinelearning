@@ -1,0 +1,127 @@
+---
+title: "MLProject"
+author: "G Ibanez"
+date: "November 19, 2018"
+output: html_document
+---
+
+## Background
+
+One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+The goal of this project is to predict the manner in which they did the exercise ("classe" variable in the training set).
+Use any of the other variables to predict with.
+
+Create a report describing:
+        - how you built your model
+        - how you used cross validation
+        - what you think the expected out of sample error is
+        - why you made the choices you did.
+
+Use your prediction model to predict 20 different test cases.
+
+## Download and read the files
+
+```{r}
+# Download
+fileUrl1 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+fileUrl2 <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+if(!file.exists("pml-training.csv")){download.file(fileUrl1, destfile = "pml-training.csv")} 
+if(!file.exists("pml-testing.csv")){download.file(fileUrl2, destfile = "pml-testing.csv")}
+
+# Read
+training = read.csv("pml-training.csv")
+testing = read.csv("pml-testing.csv")
+```
+
+## Exploratory Data Analysis
+
+```{r}
+str(training)
+```
+
+## Data Cleansing
+
+The training set has 160 variables. A good starting poing is to get rid of NAs and variables with near zero variance.
+```{r}
+# Eliminate the NA columns
+trainingNAs <- training[,colSums(is.na(training))!=0]
+length(colnames(trainingNAs))
+
+trainingClean <- training[,colSums(is.na(training)) == 0]
+length(colnames(trainingClean))
+
+# Eliminate the variables with near zero variance
+library(caret)
+trainingNZV <- trainingClean[,nearZeroVar(trainingClean)]
+length(colnames(trainingNZV))
+
+trainingClean <- trainingClean[,-nearZeroVar(trainingClean)]
+length(colnames(trainingClean))
+
+# Eliminate other variables not useful for prediction
+trainingClean <- subset(trainingClean, select = -c(X,user_name,raw_timestamp_part_1,raw_timestamp_part_2,cvtd_timestamp,num_window))
+length(colnames(trainingClean))
+
+# Apply the same transformations to the testing dataset
+testingClean <- testing[, names(testing) %in% names(trainingClean)]
+```
+
+## Building a prediction model using Machine Learning algorithms
+The original testing dataset has only 20 observations.
+I will create a partition of my clean training dataset (19622 observations) for building and testing my models.
+```{r}
+set.seed(1975)
+inTrain <- createDataPartition(trainingClean$classe, p = 3/4, list = FALSE)
+myTrainingClean <- trainingClean[inTrain,]
+myTestingClean <- trainingClean[-inTrain,]
+```
+
+I choose two different algorithms: Classification Trees via the "caret" package and Random Forests using the "randomforest" package. 
+Classification Trees because they are easy to understand. Random Forests because, although they are a little bit of a black box, it's common knowledge the high accuracy of them.
+I would have liked to use a stacked model, but the performance was really bad in my old computer, and I had to give up.
+
+## Model 1 - Decision Tree
+
+```{r}
+model_tree <- train(classe ~ ., data = myTrainingClean, method = "rpart")
+library("rattle")
+fancyRpartPlot(model_tree$finalModel)
+# Cross validation
+model_tree_cv <- train(classe ~ ., trControl = trainControl(method = "cv", number = 4), data = myTrainingClean, method = "rpart")
+print(model_tree_cv, digits = 3)
+```
+
+## Model 2 - Random Forest
+
+```{r}
+library(randomForest)
+model_rf <- randomForest(classe ~ ., data = myTrainingClean)
+# Cross validation
+# I tried to cross validate this model in a similar way but once again, the performance was really bad in my old computer, and I had to give up.
+```
+
+## Conclusion
+Out of my two options, Random Forest is much more accurate than Classification Tree (see below).
+The out of sample error (error rate on a new data set) is the error after predicting the value of classe on myTestingClean dataset (4904 observations).
+
+```{r}
+# Accuracy of the Classification Tree model
+predict_tree <- predict(model_tree, newdata = myTestingClean)
+confusionMatrix(predict_tree, myTestingClean$classe)
+# The out of sample error of the Classification Tree model is 1 - 0.4978 = 0.5022
+
+# Accuracy of the Random Forest model
+predict_rf <- predict(model_rf, newdata = myTestingClean)
+confusionMatrix(predict_rf, myTestingClean$classe)
+# The out of sample error of the Random Forest model is 1 - 0.9945 = 0.0055
+```
+
+## Course Project Prediction Quiz Portion
+Applying the Random Forest model to the 20 test cases available in the testing dataset, I get the following predictions for the classe variable:
+
+```{r}
+print(predict(model_rf, newdata = testingClean))
+```
+
+
